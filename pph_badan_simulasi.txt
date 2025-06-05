@@ -1,0 +1,83 @@
+-- Simulasi Laba/Rugi Tiap Skenario (BAB III.A)
+SELECT
+  tahun,
+  SUM(pendapatan) - SUM(beban_operasional + penyusutan) AS laba_kotor
+FROM `project.dataset_pph.transaksi`
+WHERE skenario = 'normal'
+GROUP BY tahun
+ORDER BY tahun;
+
+-- Simulasi Depresiasi - Metode Garis Lurus (BAB III.B)
+SELECT
+  aset_id,
+  kategori,
+  nilai_perolehan,
+  umur_ekonomis,
+  nilai_perolehan / umur_ekonomis AS depresiasi_tahunan
+FROM `project.dataset_pph.aset`
+WHERE metode = 'garis_lurus';
+
+-- Simulasi Depresiasi - Metode Saldo Menurun (BAB III.B)
+SELECT
+  aset_id,
+  kategori,
+  nilai_perolehan,
+  umur_ekonomis,
+  ROUND(nilai_perolehan * 0.25, 2) AS depresiasi_tahun_pertama
+FROM `project.dataset_pph.aset`
+WHERE metode = 'saldo_menurun';
+
+-- Simulasi Tax Holiday (BAB III.C)
+SELECT
+  t.tahun,
+  SUM(t.pendapatan) - SUM(t.beban_operasional + t.penyusutan) AS laba_kena_pajak,
+  CASE 
+    WHEN t.tahun BETWEEN k.tax_holiday_awal AND k.tax_holiday_akhir THEN 0
+    ELSE (SUM(t.pendapatan) - SUM(t.beban_operasional + t.penyusutan)) * k.tax_rate
+  END AS pph_badan
+FROM `project.dataset_pph.transaksi` t
+JOIN `project.dataset_pph.kebijakan_fiskal` k
+ON t.tahun = k.tahun
+GROUP BY t.tahun, k.tax_holiday_awal, k.tax_holiday_akhir, k.tax_rate
+ORDER BY t.tahun;
+
+-- Tugas Akhir: Skenario Normal, Tax Holiday, dan Perbandingan Depresiasi (BAB V.A)
+-- Skenario Normal
+SELECT
+  t.tahun,
+  SUM(t.pendapatan) - SUM(t.beban_operasional + t.penyusutan) AS laba_kena_pajak,
+  (SUM(t.pendapatan) - SUM(t.beban_operasional + t.penyusutan)) * k.tax_rate AS pph_badan
+FROM `project.dataset_pph.transaksi` t
+JOIN `project.dataset_pph.kebijakan_fiskal` k
+ON t.tahun = k.tahun
+WHERE t.skenario = 'normal'
+GROUP BY t.tahun, k.tax_rate
+ORDER BY t.tahun;
+
+-- Skenario Tax Holiday
+SELECT
+  t.tahun,
+  SUM(t.pendapatan) - SUM(t.beban_operasional + t.penyusutan) AS laba_kena_pajak,
+  CASE 
+    WHEN t.tahun BETWEEN k.tax_holiday_awal AND k.tax_holiday_akhir THEN 0
+    ELSE (SUM(t.pendapatan) - SUM(t.beban_operasional + t.penyusutan)) * k.tax_rate
+  END AS pph_badan
+FROM `project.dataset_pph.transaksi` t
+JOIN `project.dataset_pph.kebijakan_fiskal` k
+ON t.tahun = k.tahun
+WHERE t.skenario = 'tax_holiday'
+GROUP BY t.tahun, k.tax_holiday_awal, k.tax_holiday_akhir, k.tax_rate
+ORDER BY t.tahun;
+
+-- Perbandingan Depresiasi (Garis Lurus vs Saldo Menurun)
+SELECT
+  a.aset_id,
+  a.kategori,
+  a.nilai_perolehan,
+  a.umur_ekonomis,
+  CASE 
+    WHEN a.metode = 'garis_lurus' THEN a.nilai_perolehan / a.umur_ekonomis
+    WHEN a.metode = 'saldo_menurun' THEN a.nilai_perolehan * 0.25
+  END AS depresiasi_tahunan
+FROM `project.dataset_pph.aset` a
+ORDER BY a.aset_id;

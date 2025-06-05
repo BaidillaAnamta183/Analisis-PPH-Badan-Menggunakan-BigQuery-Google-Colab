@@ -1,0 +1,124 @@
+# Install required libraries
+!pip install pandas matplotlib seaborn gdown
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import gdown
+from google.colab import files
+
+# Option 1: Upload CSV files manually
+print("Upload transaksi.csv, aset.csv, and kebijakan_fiskal.csv")
+uploaded = files.upload()
+
+# Load CSV files into DataFrames
+transaksi = pd.read_csv('transaksi.csv')
+aset = pd.read_csv('aset.csv')
+kebijakan_fiskal = pd.read_csv('kebijakan_fiskal.csv')
+
+# Option 2: Download from Google Drive (uncomment to use)
+"""
+# Replace with your Google Drive file IDs
+transaksi_url = 'https://drive.google.com/uc?id=1dummy_transaksi_csv'
+aset_url = 'https://drive.google.com/uc?id=1dummy_aset_csv'
+kebijakan_fiskal_url = 'https://drive.google.com/uc?id=1dummy_kebijakan_fiskal_csv'
+
+gdown.download(transaksi_url, 'transaksi.csv', quiet=False)
+gdown.download(aset_url, 'aset.csv', quiet=False)
+gdown.download(kebijakan_fiskal_url, 'kebijakan_fiskal.csv', quiet=False)
+
+transaksi = pd.read_csv('transaksi.csv')
+aset = pd.read_csv('aset.csv')
+kebijakan_fiskal = pd.read_csv('kebijakan_fiskal.csv')
+"""
+
+# Data Processing (Simulasi BAB III in Python)
+# 1. Laba Kotor per Tahun (Skenario Normal) - Fixed for DeprecationWarning
+laba_kotor = transaksi[transaksi['skenario'] == 'normal'].groupby('tahun').agg({
+    'pendapatan': 'sum',
+    'beban_operasional': 'sum',
+    'penyusutan': 'sum'
+}).reset_index()
+laba_kotor['laba_kotor'] = laba_kotor['pendapatan'] - (laba_kotor['beban_operasional'] + laba_kotor['penyusutan'])
+
+# 2. PPh Badan (Normal vs Tax Holiday)
+merged_df = transaksi.merge(kebijakan_fiskal, on='tahun')
+pph_badan = merged_df.groupby(['tahun', 'skenario']).apply(
+    lambda x: pd.Series({
+        'laba_kena_pajak': (x['pendapatan'] - (x['beban_operasional'] + x['penyusutan'])).sum(),
+        'pph_badan': 0 if (x['tahun'].iloc[0] >= x['tax_holiday_awal'].iloc[0] and 
+                           x['tahun'].iloc[0] <= x['tax_holiday_akhir'].iloc[0] and 
+                           x['skenario'].iloc[0] == 'tax_holiday')
+                     else (x['pendapatan'] - (x['beban_operasional'] + x['penyusutan'])).sum() * x['tax_rate'].iloc[0]
+    }), include_groups=False
+).reset_index()
+
+# 3. Perbandingan Depresiasi
+aset['depresiasi_tahunan'] = aset.apply(
+    lambda x: x['nilai_perolehan'] / x['umur_ekonomis'] if x['metode'] == 'garis_lurus'
+              else x['nilai_perolehan'] * 0.25, axis=1
+)
+
+# Visualization (BAB IV)
+# 1. Tren Laba Kotor (Skenario Normal)
+plt.figure(figsize=(10, 6))
+sns.lineplot(data=laba_kotor, x='tahun', y='laba_kotor', marker='o')
+plt.title('Tren Laba Kotor per Tahun (Skenario Normal)')
+plt.xlabel('Tahun')
+plt.ylabel('Laba Kotor (IDR)')
+plt.grid(True)
+plt.show()
+
+# 2. Perbandingan PPh Badan (Normal vs Tax Holiday)
+plt.figure(figsize=(10, 6))
+sns.barplot(data=pph_badan, x='tahun', y='pph_badan', hue='skenario')
+plt.title('Perbandingan PPh Badan: Normal vs Tax Holiday')
+plt.xlabel('Tahun')
+plt.ylabel('PPh Badan (IDR)')
+plt.legend(title='Skenario')
+plt.show()
+
+# 3. Perbandingan Depresiasi
+plt.figure(figsize=(10, 6))
+sns.barplot(data=aset, x='aset_id', y='depresiasi_tahunan', hue='kategori')
+plt.title('Perbandingan Depresiasi Tahunan per Aset')
+plt.xlabel('Aset ID')
+plt.ylabel('Depresiasi Tahunan (IDR)')
+plt.legend(title='Kategori')
+plt.show()
+
+# Narasi Analitis (BAB V)
+print("=== Narasi Analitis ===")
+print("1. Tren Laba Kotor:")
+print(f"Laba kotor pada skenario normal menunjukkan tren meningkat dari {laba_kotor['laba_kotor'].min():,.0f} IDR pada tahun {laba_kotor.loc[laba_kotor['laba_kotor'].idxmin(), 'tahun']} hingga {laba_kotor['laba_kotor'].max():,.0f} IDR pada tahun {laba_kotor.loc[laba_kotor['laba_kotor'].idxmax(), 'tahun']}.")
+print("\n2. Dampak Tax Holiday:")
+print("PPh Badan pada skenario tax holiday bernilai 0 selama periode 2023-2027, memberikan penghematan pajak signifikan dibandingkan skenario normal, yang memiliki PPh hingga", f"{pph_badan[pph_badan['skenario'] == 'normal']['pph_badan'].max():,.0f} IDR.")
+print("\n3. Perbandingan Depresiasi:")
+print("Metode garis lurus menghasilkan depresiasi konsisten setiap tahun (misalnya,", f"{aset[aset['metode'] == 'garis_lurus']['depresiasi_tahunan'].iloc[0]:,.0f} IDR untuk A001), sedangkan metode saldo menurun memberikan depresiasi lebih besar di tahun pertama (misalnya,", f"{aset[aset['metode'] == 'saldo_menurun']['depresiasi_tahunan'].iloc[0]:,.0f} IDR untuk A002).")
+
+# Integrasi AI (BAB VI) - Simulasi tanpa API key
+print("\n=== Integrasi AI (Simulasi) ===")
+prompt = f"""
+Jelaskan dampak penerapan tax holiday terhadap PPh tahun 2025 berdasarkan output berikut:
+{pph_badan[pph_badan['tahun'] == 2025][['tahun', 'skenario', 'laba_kena_pajak', 'pph_badan']].to_string()}
+"""
+print("Prompt untuk AI:")
+print(prompt)
+
+# Simulasi respons AI
+print("\nSimulasi Respons AI:")
+print("Berdasarkan data, pada tahun 2025, skenario tax holiday menghasilkan PPh Badan sebesar 0 karena periode tax holiday berlaku (2023-2027). Ini mengurangi beban pajak perusahaan, memungkinkan alokasi dana untuk investasi atau ekspansi, dibandingkan skenario normal yang memiliki PPh Badan", f"{pph_badan[(pph_badan['tahun'] == 2025) & (pph_badan['skenario'] == 'normal')]['pph_badan'].iloc[0]:,.0f} IDR.")
+
+# Optional: Integrasi dengan OpenAI (uncomment jika Anda memiliki API key)
+"""
+!pip install openai
+import openai
+openai.api_key = 'your-openai-api-key'  # Ganti dengan API key Anda
+response = openai.Completion.create(
+    engine="text-davinci-003",
+    prompt=prompt,
+    max_tokens=500
+)
+print("Respons AI:")
+print(response.choices[0].text.strip())
+"""
